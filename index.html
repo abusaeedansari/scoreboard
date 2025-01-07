@@ -219,6 +219,15 @@ footer {
   color: #808080;
 }
 
+#enterFullscreenBtn, #enterFullscreenAllBtn{
+  padding: 12px 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 @media (max-width: 992px) {
   .container {
     overflow-x: hidden;
@@ -369,6 +378,7 @@ footer {
               <th class="sortable-header" data-table="recentTable" data-col="quiz">Quiz<span class="sort-icon">▲</span></th>
               <th class="sortable-header" data-table="recentTable" data-col="started">Started<span class="sort-icon">▲</span></th>
               <th class="sortable-header" data-table="recentTable" data-col="ended">Last/End Time<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="date">Date<span class="sort-icon">▲</span></th> <!-- New Date Column -->
               <th>Day/Night</th>
               <th class="sortable-header" data-table="recentTable" data-col="score">Score<span class="sort-icon">▲</span></th>
               <th class="sortable-header" data-table="recentTable" data-col="progress">Progress<span class="sort-icon">▲</span></th>
@@ -404,6 +414,7 @@ footer {
               <th class="sortable-header" data-table="allResultsTable" data-col="quiz">Quiz<span class="sort-icon">▲</span></th>
               <th class="sortable-header" data-table="allResultsTable" data-col="started">Started<span class="sort-icon">▲</span></th>
               <th class="sortable-header" data-table="allResultsTable" data-col="ended">Last/End Time<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="date">Date<span class="sort-icon">▲</span></th> <!-- New Date Column -->
               <th>Day/Night</th>
               <th class="sortable-header" data-table="allResultsTable" data-col="score">Score<span class="sort-icon">▲</span></th>
               <th class="sortable-header" data-table="allResultsTable" data-col="progress">Progress<span class="sort-icon">▲</span></th>
@@ -555,6 +566,9 @@ function sortTableData(dataArr, tableId, col, dir) {
       }
       valA = ratioA;
       valB = ratioB;
+    } else if (col === "date") {
+      valA = a._startTimestamp || a._endTimestamp || 0;
+      valB = b._startTimestamp || b._endTimestamp || 0;
     } else {
       // # or unknown
       valA = "";
@@ -627,6 +641,10 @@ function renderTable(tableId, dataArr) {
       progressStr = `${item.questionsCompleted}/${item.totalQuestions}`;
     }
 
+    // Get the date from timeStarted or timeEnded
+    const dateISO = item.timeStarted || item.timeEnded || "";
+    const formattedDate = formatLocalDate(dateISO);
+
     const tr = document.createElement("tr");
     const cells = [
       createCell(index + 1, false, "ranking"),
@@ -636,6 +654,7 @@ function renderTable(tableId, dataArr) {
       createCell(item.quiz),
       createCell(formatLocalAmPm(item.timeStarted)),
       createCell(formatLocalAmPm(usedEndISO)),
+      createCell(formattedDate, false, "sortable-date"), // New Date Cell
       createCell(`<span class="${cellClass}">${icon}</span>`, true),
       createCell(displayedScore),
       createCell(progressStr)
@@ -688,7 +707,8 @@ document.getElementById("exportCsvBtn").addEventListener("click", () => {
     timeEnded: r._endTimeISO || "",
     score: r.score || "",
     questionsCompleted: r.questionsCompleted || "",
-    totalQuestions: r.totalQuestions || ""
+    totalQuestions: r.totalQuestions || "",
+    date: formatLocalDate(r.timeStarted || r.timeEnded || "") // Include Date in CSV
   }));
   const csv = Papa.unparse(csvData);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -724,6 +744,19 @@ function formatLocalAmPm(isoString) {
   const mm = (minutes < 10 ? "0"+minutes : minutes);
   return `${hh}:${mm} ${ampm}`;
 }
+
+function formatLocalDate(isoString) {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return "";
+  const day = String(d.getDate()).padStart(2, '0');
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = monthNames[d.getMonth()];
+  const year = String(d.getFullYear()).slice(-2);
+  return `${day} ${month} ${year}`;
+}
+
 function dayOrNight(isoString) {
   if (!isoString) return "day";
   const d = new Date(isoString);
