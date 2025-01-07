@@ -261,11 +261,18 @@ footer {
   z-index: 9999;
   margin: 0;
   border-radius: 0;
-  overflow: auto;
+  overflow: hidden;
   padding: 2rem;
+  display: flex;
+  flex-direction: column;
 }
 .scoreboard-block.fullscreen h2 {
   font-size: 2rem;
+}
+.scoreboard-block.fullscreen .table-container {
+  max-height: none;
+  flex: 1;
+  overflow-y: auto;
 }
 .scoreboard-block.fullscreen table {
   font-size: 1.3rem;
