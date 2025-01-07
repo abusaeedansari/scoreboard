@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Enhanced Live Scoreboard</title>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300..800&display=swap" rel="stylesheet">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+<!-- Papa Parse for CSV export -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+
+<style>
+:root {
+  --bg-main: #0e1726;
+  --primary: #70C1B3;
+  --text-color: #fff;
+  --table-bg: #162035;
+  --header-bg: linear-gradient(to right, #10182c, #0e1726);
+  --container-bg: #121b2f;
+  --box-shadow: rgba(0, 0, 0, 0.4);
+  --highlight-day: #ffd74f;
+  --highlight-night: #4A90E2;
+  --btn-bg: #70C1B3;
+  --btn-text: #fff;
+  --border-color: #1c2c46;
+  --hover-color: rgba(255, 255, 255, 0.05);
+  --radius-default: 8px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background: var(--bg-main);
+  font-family: "Open Sans", sans-serif;
+  color: var(--text-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+header {
+  width: 100%;
+  background: var(--header-bg);
+  box-shadow: 0 4px 10px var(--box-shadow);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+header .header-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+header h1 {
+  font-weight: 700;
+  font-size: 1.8rem;
+  margin: 0;
+}
+header button {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: none;
+  outline: none;
+  border-radius: var(--radius-default);
+  font-size: 0.9rem;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+header button:hover {
+  opacity: 0.9;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 1rem auto;
+  padding: 0 1.5rem 2rem;
+  background: var(--container-bg);
+  box-shadow: 0 4px 10px var(--box-shadow);
+  border-radius: var(--radius-default);
+}
+
+.filters-and-sorts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.filters-and-sorts > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.filters-and-sorts label {
+  font-weight: 600;
+}
+.filters-and-sorts select {
+  background: #1b2a43;
+  color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-default);
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  outline: none;
+}
+.loading-indicator {
+  margin-left: auto;
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  color: #ffd74f;
+}
+
+.tables-wrapper {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  padding: 1rem;
+}
+@media (min-width: 992px) {
+  .tables-wrapper {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.scoreboard-block {
+  background: var(--table-bg);
+  border-radius: var(--radius-default);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 6px var(--box-shadow);
+  min-width: 0;
+}
+.scoreboard-block h2 {
+  margin: 0;
+  margin-right: 60px;
+  margin-left: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  background: #192132;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.table-container {
+  overflow-x: auto; /* horizontal scroll if table is wide */
+  max-height: 400px; /* vertical scroll for many rows */
+  overflow-y: auto;
+}
+
+/* Let the table shrink/expand as needed, no forced widths. */
+table {
+  border-collapse: collapse;
+  width: max-content;
+  table-layout: auto;
+}
+
+/* Important: keep headings & cells on one line, so they align cleanly. */
+th, td {
+  white-space: nowrap;
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.9rem;
+}
+thead {
+  background: #1b2a43;
+}
+tbody tr:hover {
+  background: var(--hover-color);
+}
+.ranking {
+  font-weight: 700;
+}
+
+.dayCell {
+  background-color: var(--highlight-day);
+  color: #000;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.85rem;
+  display: inline-block;
+}
+.nightCell {
+  background-color: var(--highlight-night);
+  color: #fff;
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.85rem;
+  display: inline-block;
+}
+
+footer {
+  margin-top: auto;
+  padding: 1rem 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #808080;
+}
+
+@media (max-width: 992px) {
+  .container {
+    overflow-x: hidden;
+  }
+  .closeFullscreenBtn {
+    margin-right: 1rem;
+  }
+}
+@media (max-width: 768px) {
+  header h1 {
+    font-size: 1.4rem;
+  }
+  th, td {
+    padding: 0.6rem;
+    font-size: 0.8rem;
+  }
+  .filters-and-sorts {
+    flex-direction: column;
+  }
+  .filters-and-sorts > div {
+    flex: unset;
+    width: 100%;
+  }
+}
+
+.scoreboard-block.fullscreen {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  margin: 0;
+  border-radius: 0;
+  overflow: auto;
+  padding: 2rem;
+}
+.scoreboard-block.fullscreen h2 {
+  font-size: 2rem;
+}
+.scoreboard-block.fullscreen table {
+  font-size: 1.3rem;
+}
+.closeFullscreenBtn {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: none;
+  outline: none;
+  border-radius: var(--radius-default);
+  font-size: 0.9rem;
+  padding: 0.4rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.3s;
+  margin-left: 1rem;
+}
+.closeFullscreenBtn:hover {
+  opacity: 0.9;
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  align-items: center;
+}
+.sort-icon {
+  margin-left: 0.3rem;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  transition: transform 0.2s;
+}
+.sort-asc .sort-icon {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+.sort-desc .sort-icon {
+  transform: rotate(0deg);
+  opacity: 1;
+}
+
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1>Dynamic Live Scoreboard</h1>
+    <button id="exportCsvBtn">Export CSV</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="filters-and-sorts">
+    <div>
+      <label for="sortSelect">Sort By:</label>
+      <select id="sortSelect">
+        <option value="latest">Latest Completion</option>
+        <option value="highestScore">Highest Score</option>
+        <option value="name">Name (A–Z)</option>
+        <option value="rollNo">Roll No (Asc)</option>
+      </select>
+    </div>
+    <div>
+      <label for="quizFilter">Filter Quiz:</label>
+      <select id="quizFilter">
+        <option value="">All Quizzes</option>
+      </select>
+    </div>
+    <span id="liveStatus" class="loading-indicator">Updating...</span>
+  </div>
+
+  <div class="tables-wrapper">
+
+    <!-- Recently Completed -->
+    <div class="scoreboard-block" id="recentBlock">
+      <h2>
+        Recently Completed (Last Hour)
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="enterFullscreenBtn" style="background:var(--btn-bg); border-radius:var(--radius-default);">
+            Fullscreen
+          </button>
+          <button class="closeFullscreenBtn" id="closeFullscreenBtn" style="display:none;">
+            Close Fullscreen
+          </button>
+        </div>
+      </h2>
+      <div class="table-container">
+        <table id="recentTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable-header" data-table="recentTable" data-col="rollNo">Roll No<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="name">Name<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="division">Division<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="quiz">Quiz<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="started">Started<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="ended">Last/End Time<span class="sort-icon">▲</span></th>
+              <th>Day/Night</th>
+              <th class="sortable-header" data-table="recentTable" data-col="score">Score<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="recentTable" data-col="progress">Progress<span class="sort-icon">▲</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- All Results -->
+    <div class="scoreboard-block" id="allResultsBlock">
+      <h2>
+        All Results
+        <div style="display:flex; gap:0.5rem;">
+          <button id="enterFullscreenAllBtn" style="background:var(--btn-bg); border-radius:var(--radius-default);">
+            Fullscreen
+          </button>
+          <button class="closeFullscreenBtn" id="closeFullscreenAllBtn" style="display:none;">
+            Close Fullscreen
+          </button>
+        </div>
+      </h2>
+      <div class="table-container">
+        <table id="allResultsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="rollNo">Roll No<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="name">Name<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="division">Division<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="quiz">Quiz<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="started">Started<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="ended">Last/End Time<span class="sort-icon">▲</span></th>
+              <th>Day/Night</th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="score">Score<span class="sort-icon">▲</span></th>
+              <th class="sortable-header" data-table="allResultsTable" data-col="progress">Progress<span class="sort-icon">▲</span></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  © 2025 Your Organization. All rights reserved.
+</footer>
+
+<script>
+/* ----------------------------------------------------
+   1) Initialize Firebase
+-----------------------------------------------------*/
+const firebaseConfig = {
+  apiKey: "AIzaSyB-RDLOoTlaio0VgtFh7eencMr9ekdFEEk",
+  authDomain: "test-app-1-6ade5.firebaseapp.com",
+  databaseURL: "https://test-app-1-6ade5-default-rtdb.firebaseio.com",
+  projectId: "test-app-1-6ade5",
+  storageBucket: "test-app-1-6ade5.firebasestorage.app",
+  messagingSenderId: "938447574937",
+  appId: "1:938447574937:web:65c1c53a12c665988b2508",
+  measurementId: "G-FKNLFZH4G9"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let allResults = [];
+let updatingTimeout;
+
+/* Default sort by "ended" desc */
+let globalCurrentSort = {
+  recentTable: { col: "ended", dir: "desc" },
+  allResultsTable: { col: "ended", dir: "desc" }
+};
+let usingManualSort = {
+  recentTable: false,
+  allResultsTable: false
+};
+
+/* Listen to "results" in DB */
+db.ref("results").on("value", snapshot => {
+  showUpdatingIndicator();
+  if (!snapshot.exists()) {
+    allResults = [];
+    refreshDisplays();
+    return;
+  }
+  const raw = snapshot.val();
+  const arr = [];
+  const quizSet = new Set();
+
+  for (let key in raw) {
+    const r = raw[key];
+    r._key = key;
+    r._endTimeISO = r.timeEnded || r.lastAnswered || "";
+    r._endTimestamp = new Date(r._endTimeISO).getTime() || 0;
+    r._startTimestamp = new Date(r.timeStarted).getTime() || 0;
+
+    if (r.quiz) quizSet.add(r.quiz);
+    arr.push(r);
+  }
+  allResults = arr;
+  populateQuizOptions(Array.from(quizSet));
+  refreshDisplays();
+});
+
+function populateQuizOptions(quizList) {
+  const quizFilter = document.getElementById("quizFilter");
+  while (quizFilter.options.length > 1) {
+    quizFilter.remove(1);
+  }
+  quizList.sort();
+  quizList.forEach(q => {
+    const opt = document.createElement("option");
+    opt.value = q;
+    opt.textContent = q;
+    quizFilter.appendChild(opt);
+  });
+}
+
+function sortResults(dataArr, method) {
+  const arr = [...dataArr];
+  switch (method) {
+    case "latest":
+      arr.sort((a,b) => b._endTimestamp - a._endTimestamp);
+      break;
+    case "highestScore":
+      arr.sort((a,b) => (b.score || 0) - (a.score || 0));
+      break;
+    case "name":
+      arr.sort((a,b) => {
+        const an = (a.name || "").toLowerCase();
+        const bn = (b.name || "").toLowerCase();
+        return an.localeCompare(bn);
+      });
+      break;
+    case "rollNo":
+      arr.sort((a,b) => parseInt(a.rollNo||0) - parseInt(b.rollNo||0));
+      break;
+  }
+  return arr;
+}
+function filterByQuiz(dataArr, quizName) {
+  if (!quizName) return dataArr;
+  return dataArr.filter(r => r.quiz === quizName);
+}
+
+function sortTableData(dataArr, tableId, col, dir) {
+  const sortedArr = [...dataArr];
+  sortedArr.sort((a, b) => {
+    let valA, valB;
+    if (col === "rollNo") {
+      valA = parseInt(a.rollNo||0);
+      valB = parseInt(b.rollNo||0);
+    } else if (col === "name") {
+      valA = (a.name||"").toLowerCase();
+      valB = (b.name||"").toLowerCase();
+    } else if (col === "division") {
+      valA = (a.division||"").toLowerCase();
+      valB = (b.division||"").toLowerCase();
+    } else if (col === "quiz") {
+      valA = (a.quiz||"").toLowerCase();
+      valB = (b.quiz||"").toLowerCase();
+    } else if (col === "started") {
+      valA = a._startTimestamp;
+      valB = b._startTimestamp;
+    } else if (col === "ended") {
+      valA = a._endTimestamp;
+      valB = b._endTimestamp;
+    } else if (col === "score") {
+      valA = parseInt(a.score||0);
+      valB = parseInt(b.score||0);
+    } else if (col === "progress") {
+      let ratioA = 0, ratioB = 0;
+      if (typeof a.questionsCompleted !== "undefined" && typeof a.totalQuestions !== "undefined") {
+        ratioA = a.questionsCompleted / (a.totalQuestions || 1);
+      }
+      if (typeof b.questionsCompleted !== "undefined" && typeof b.totalQuestions !== "undefined") {
+        ratioB = b.questionsCompleted / (b.totalQuestions || 1);
+      }
+      valA = ratioA;
+      valB = ratioB;
+    } else {
+      // # or unknown
+      valA = "";
+      valB = "";
+    }
+    if (typeof valA === "string" && typeof valB === "string") {
+      return valA.localeCompare(valB);
+    }
+    return valA - valB;
+  });
+  if (dir === "desc") sortedArr.reverse();
+  return sortedArr;
+}
+
+/* Filter + sort + re-render tables */
+function refreshDisplays() {
+  const sortMethod = document.getElementById("sortSelect").value;
+  const quizName = document.getElementById("quizFilter").value;
+  const filtered = filterByQuiz(allResults, quizName);
+
+  let sortedData = sortResults(filtered, sortMethod);
+
+  let finalAll = sortedData;
+  if (usingManualSort.allResultsTable) {
+    const col = globalCurrentSort.allResultsTable.col;
+    const dir = globalCurrentSort.allResultsTable.dir;
+    finalAll = sortTableData(filtered, "allResultsTable", col, dir);
+  }
+
+  let finalRecent = sortedData.filter(r => (Date.now() - r._endTimestamp) <= 3600000);
+  if (usingManualSort.recentTable) {
+    let recentFiltered = filtered.filter(r => (Date.now() - r._endTimestamp) <= 3600000);
+    const col = globalCurrentSort.recentTable.col;
+    const dir = globalCurrentSort.recentTable.dir;
+    finalRecent = sortTableData(recentFiltered, "recentTable", col, dir);
+  }
+
+  renderTable("recentTable", finalRecent);
+  renderTable("allResultsTable", finalAll);
+}
+
+/* We only use innerHTML for the icon. */
+function createCell(content, useHtml=false, extraClass="") {
+  const td = document.createElement("td");
+  td.className = extraClass;
+  if (useHtml) {
+    td.innerHTML = content;
+  } else {
+    td.textContent = (content != null ? String(content) : "");
+  }
+  return td;
+}
+
+function renderTable(tableId, dataArr) {
+  const tbody = document.querySelector(`#${tableId} tbody`);
+  tbody.innerHTML = "";
+
+  dataArr.forEach((item, index) => {
+    const displayedScore = (item.finalScore !== undefined)
+      ? item.finalScore
+      : (item.score || "");
+
+    const usedEndISO = item.timeEnded || item.lastAnswered || "";
+    const dayN = dayOrNight(usedEndISO);
+    const icon = (dayN === "night") ? "🌙" : "☀️";
+    const cellClass = (dayN === "night") ? "nightCell" : "dayCell";
+
+    let progressStr = "";
+    if (item.questionsCompleted !== undefined && item.totalQuestions !== undefined) {
+      progressStr = `${item.questionsCompleted}/${item.totalQuestions}`;
+    }
+
+    const tr = document.createElement("tr");
+    const cells = [
+      createCell(index + 1, false, "ranking"),
+      createCell(item.rollNo),
+      createCell(item.name),
+      createCell(item.division),
+      createCell(item.quiz),
+      createCell(formatLocalAmPm(item.timeStarted)),
+      createCell(formatLocalAmPm(usedEndISO)),
+      createCell(`<span class="${cellClass}">${icon}</span>`, true),
+      createCell(displayedScore),
+      createCell(progressStr)
+    ];
+    cells.forEach(td => tr.appendChild(td));
+    tbody.appendChild(tr);
+  });
+}
+
+/* CSV Export */
+document.getElementById("exportCsvBtn").addEventListener("click", () => {
+  const sortMethod = document.getElementById("sortSelect").value;
+  const quizName = document.getElementById("quizFilter").value;
+  const filtered = filterByQuiz(allResults, quizName);
+
+  let sorted = sortResults(filtered, sortMethod);
+  if (usingManualSort.allResultsTable) {
+    const col = globalCurrentSort.allResultsTable.col;
+    const dir = globalCurrentSort.allResultsTable.dir;
+    sorted = sortTableData(filtered, "allResultsTable", col, dir);
+  }
+
+  const csvData = sorted.map(r => ({
+    rollNo: r.rollNo || "",
+    name: r.name || "",
+    division: r.division || "",
+    quiz: r.quiz || "",
+    timeStarted: r.timeStarted || "",
+    timeEnded: r._endTimeISO || "",
+    score: r.score || "",
+    questionsCompleted: r.questionsCompleted || "",
+    totalQuestions: r.totalQuestions || ""
+  }));
+  const csv = Papa.unparse(csvData);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "scoreboard-export.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+});
+
+/* Sort dropdown changes => re‐sort from scratch */
+document.getElementById("sortSelect").addEventListener("change", () => {
+  usingManualSort.recentTable = false;
+  usingManualSort.allResultsTable = false;
+  refreshDisplays();
+});
+document.getElementById("quizFilter").addEventListener("change", () => {
+  refreshDisplays();
+});
+
+/* Utilities */
+function formatLocalAmPm(isoString) {
+  if (!isoString) return "";
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return "";
+  let hours = d.getHours();
+  const minutes = d.getMinutes();
+  const ampm = hours >= 12 ? "pm" : "am";
+  hours = hours % 12 || 12;
+  const hh = (hours < 10 ? "0"+hours : hours);
+  const mm = (minutes < 10 ? "0"+minutes : minutes);
+  return `${hh}:${mm} ${ampm}`;
+}
+function dayOrNight(isoString) {
+  if (!isoString) return "day";
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return "day";
+  const h = d.getHours();
+  return (h >= 18 || h < 6) ? "night" : "day";
+}
+function showUpdatingIndicator() {
+  const indicator = document.getElementById('liveStatus');
+  indicator.style.opacity = 1;
+  clearTimeout(updatingTimeout);
+  updatingTimeout = setTimeout(() => {
+    indicator.style.opacity = 0;
+  }, 1000);
+}
+
+/* Fullscreen toggles */
+const recentBlock = document.getElementById('recentBlock');
+const enterFullscreenBtn = document.getElementById('enterFullscreenBtn');
+const closeFullscreenBtn = document.getElementById('closeFullscreenBtn');
+enterFullscreenBtn.addEventListener('click', () => {
+  recentBlock.classList.add('fullscreen');
+  enterFullscreenBtn.style.display = 'none';
+  closeFullscreenBtn.style.display = 'inline-block';
+});
+closeFullscreenBtn.addEventListener('click', () => {
+  recentBlock.classList.remove('fullscreen');
+  closeFullscreenBtn.style.display = 'none';
+  enterFullscreenBtn.style.display = 'inline-block';
+});
+
+const allResultsBlock = document.getElementById('allResultsBlock');
+const enterFullscreenAllBtn = document.getElementById('enterFullscreenAllBtn');
+const closeFullscreenAllBtn = document.getElementById('closeFullscreenAllBtn');
+enterFullscreenAllBtn.addEventListener('click', () => {
+  allResultsBlock.classList.add('fullscreen');
+  enterFullscreenAllBtn.style.display = 'none';
+  closeFullscreenAllBtn.style.display = 'inline-block';
+});
+closeFullscreenAllBtn.addEventListener('click', () => {
+  allResultsBlock.classList.remove('fullscreen');
+  closeFullscreenAllBtn.style.display = 'none';
+  enterFullscreenAllBtn.style.display = 'inline-block';
+});
+
+/* Clickable column headers for sorting */
+document.querySelectorAll("th.sortable-header").forEach(th => {
+  th.addEventListener("click", () => {
+    const tableId = th.getAttribute("data-table");
+    const col = th.getAttribute("data-col");
+    const currentCol = globalCurrentSort[tableId].col;
+    const currentDir = globalCurrentSort[tableId].dir;
+    let newDir = "asc";
+    if (col === currentCol && currentDir === "asc") {
+      newDir = "desc";
+    } else if (col === currentCol && currentDir === "desc") {
+      newDir = "asc";
+    }
+    globalCurrentSort[tableId].col = col;
+    globalCurrentSort[tableId].dir = newDir;
+    usingManualSort[tableId] = true;
+    refreshDisplays();
+    updateSortIcons(tableId, col, newDir);
+  });
+});
+function updateSortIcons(tableId, col, dir) {
+  document.querySelectorAll(`th.sortable-header[data-table="${tableId}"]`).forEach(th => {
+    th.classList.remove("sort-asc", "sort-desc");
+  });
+  const thisHeader = document.querySelector(`th.sortable-header[data-table="${tableId}"][data-col="${col}"]`);
+  if (thisHeader) {
+    if (dir === "asc") {
+      thisHeader.classList.add("sort-asc");
+    } else {
+      thisHeader.classList.add("sort-desc");
+    }
+  }
+}
+
+/* On load, highlight the default sort icons. */
+document.addEventListener("DOMContentLoaded", () => {
+  updateSortIcons("recentTable", globalCurrentSort.recentTable.col, globalCurrentSort.recentTable.dir);
+  updateSortIcons("allResultsTable", globalCurrentSort.allResultsTable.col, globalCurrentSort.allResultsTable.dir);
+});
+</script>
+
+</body>
+</html>
